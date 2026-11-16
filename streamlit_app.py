@@ -22,10 +22,18 @@ st.set_page_config(
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 MODEL_PATH = os.path.join(
-    PROJECT_DIR,
+    os.path.dirname(os.path.abspath(__file__)),
     "models",
     "failure_prediction_bundle.joblib"
 )
+
+if not os.path.exists(MODEL_PATH):
+    st.error(f"Model file not found: {MODEL_PATH}")
+    st.stop()
+
+bundle = joblib.load(MODEL_PATH)
+
+st.success("AI4I failure prediction model loaded successfully!")
 
 
 # ============================================================
