@@ -29,58 +29,86 @@ MODEL_PATH = os.path.join(
 
 
 # ============================================================
-# INDUSTRIAL DARK THEME
-# ============================================================
 
 st.markdown(
     """
     <style>
     .stApp {
-        background-color: #0b1220;
-        color: #e5e7eb;
+        background-color: #F4F7FB;
+        color: #172B4D;
+    }
+
+    [data-testid="stHeader"] {
+        background-color: #F4F7FB;
     }
 
     section[data-testid="stSidebar"] {
-        background-color: #111827;
+        background-color: #FFFFFF;
+        border-right: 1px solid #DCE3EC;
     }
 
-    div[data-testid="stMetric"] {
-        background-color: #172033;
-        border: 1px solid #263449;
-        padding: 14px;
-        border-radius: 10px;
+    section[data-testid="stSidebar"] * {
+        color: #172B4D;
     }
 
     .main-title {
         font-size: 32px;
         font-weight: 800;
-        color: #e5e7eb;
+        color: #173B67;
     }
 
     .sub-title {
-        color: #94a3b8;
-        font-size: 14px;
+        color: #52647A;
+        font-size: 15px;
     }
 
-    .status-card {
-        background-color: #172033;
-        border: 1px solid #263449;
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 10px;
+    div[data-testid="stMetric"] {
+        background-color: #FFFFFF;
+        border: 1px solid #DCE3EC;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 6px rgba(23, 59, 103, 0.05);
+    }
+
+    div[data-testid="stMetricLabel"] {
+        color: #52647A;
+    }
+
+    div[data-testid="stMetricValue"] {
+        color: #173B67;
+        font-weight: 700;
+    }
+
+    .stButton > button {
+        background-color: #173B67;
+        color: #FFFFFF;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+
+    .stButton > button:hover {
+        background-color: #0D9488;
+        color: #FFFFFF;
     }
 
     .disclaimer {
-        color: #fbbf24;
+        color: #92400E;
         font-size: 13px;
-        background-color: #292313;
+        background-color: #FEF3C7;
+        border: 1px solid #FDE68A;
         border-radius: 8px;
         padding: 12px;
+    }
+
+    [data-testid="stDataFrame"] {
+        background-color: #FFFFFF;
     }
     </style>
     """,
     unsafe_allow_html=True
 )
+
 
 
 # ============================================================
