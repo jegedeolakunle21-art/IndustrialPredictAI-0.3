@@ -1,3 +1,4 @@
+
 import os
 import random
 import joblib
@@ -22,20 +23,14 @@ st.set_page_config(
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 MODEL_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
+    PROJECT_DIR,
     "models",
     "failure_prediction_bundle.joblib"
 )
 
-if not os.path.exists(MODEL_PATH):
-    st.error(f"Model file not found: {MODEL_PATH}")
-    st.stop()
 
-bundle = joblib.load(MODEL_PATH)
-
-st.success("AI4I failure prediction model loaded successfully!")
-
-
+# ============================================================
+# CUSTOM STYLING
 # ============================================================
 
 st.markdown(
@@ -118,30 +113,54 @@ st.markdown(
 )
 
 
-
 # ============================================================
 # MODEL LOADING
 # ============================================================
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Loading AI4I prediction model...")
 def load_model_bundle():
-    """Returns (bundle, error_message). Never raises, so the app
-    still starts on Streamlit Cloud if the model is missing or was
-    saved with an incompatible library version."""
-    if not os.path.exists(MODEL_PATH):
-        return None, "Model file not found."
+
+    if not os.path.isfile(MODEL_PATH):
+        return None, (
+            f"Model file not found at: {MODEL_PATH}"
+        )
 
     try:
-        return joblib.load(MODEL_PATH), None
+        loaded_bundle = joblib.load(MODEL_PATH)
+
+        required_keys = [
+            "pipeline",
+            "model_name",
+            "threshold",
+            "dataset",
+            "dataset_type",
+            "metrics"
+        ]
+
+        missing_keys = [
+            key for key in required_keys
+            if key not in loaded_bundle
+        ]
+
+        if missing_keys:
+            return None, (
+                "Invalid model bundle. Missing keys: "
+                + ", ".join(missing_keys)
+            )
+
+        return loaded_bundle, None
+
     except Exception as exc:
-        return None, f"Model could not be loaded: {exc}"
+        return None, (
+            f"Model loading failed: {type(exc).__name__}: {exc}"
+        )
 
 
 bundle, bundle_error = load_model_bundle()
 
 
 # ============================================================
-# SIMULATED EQUIPMENT TELEMETRY
+# EQUIPMENT CONFIGURATION
 # ============================================================
 
 EQUIPMENT_CONFIG = {
@@ -152,6 +171,7 @@ EQUIPMENT_CONFIG = {
         "current": 18,
         "pressure": 0
     },
+
     "Pump-001": {
         "type": "Pump",
         "temperature": 58,
@@ -159,6 +179,7 @@ EQUIPMENT_CONFIG = {
         "current": 14,
         "pressure": 5.0
     },
+
     "Generator-001": {
         "type": "Generator",
         "temperature": 75,
@@ -166,6 +187,7 @@ EQUIPMENT_CONFIG = {
         "current": 45,
         "pressure": 0
     },
+
     "Motor-002": {
         "type": "Motor",
         "temperature": 62,
@@ -173,6 +195,7 @@ EQUIPMENT_CONFIG = {
         "current": 16,
         "pressure": 0
     },
+
     "Pump-002": {
         "type": "Pump",
         "temperature": 60,
@@ -183,23 +206,25 @@ EQUIPMENT_CONFIG = {
 }
 
 
+# ============================================================
+# SIMULATED TELEMETRY
+# ============================================================
+
 def initialize_equipment_state():
+
     if "equipment_history" not in st.session_state:
+
         st.session_state.equipment_history = {
             name: []
             for name in EQUIPMENT_CONFIG
         }
 
-    if "telemetry_tick" not in st.session_state:
-        st.session_state.telemetry_tick = 0
-
 
 def generate_reading(name, config):
-    previous = (
-        st.session_state.equipment_history[name][-1]
-        if st.session_state.equipment_history[name]
-        else config
-    )
+
+    history = st.session_state.equipment_history[name]
+
+    previous = history[-1] if history else config
 
     temperature = max(
         20,
@@ -219,6 +244,7 @@ def generate_reading(name, config):
     pressure = config["pressure"]
 
     if pressure > 0:
+
         pressure = max(
             0.1,
             previous["pressure"] + random.uniform(-0.15, 0.15)
@@ -236,28 +262,28 @@ def generate_reading(name, config):
 
 
 def calculate_health(reading):
-    """
-    Illustrative rule-based score for simulated telemetry.
-    It is not an AI model prediction or an engineering diagnosis.
-    """
 
     score = 100
 
     if reading["temperature"] > 85:
         score -= 35
+
     elif reading["temperature"] > 75:
         score -= 15
 
     if reading["vibration"] > 7:
         score -= 35
+
     elif reading["vibration"] > 5:
         score -= 15
 
     if reading["equipment_type"] == "Pump":
+
         if reading["pressure"] < 2:
             score -= 20
 
     if reading["equipment_type"] == "Generator":
+
         if reading["temperature"] > 90:
             score -= 15
 
@@ -265,8 +291,10 @@ def calculate_health(reading):
 
     if score >= 80:
         status = "Healthy"
+
     elif score >= 60:
         status = "Warning"
+
     else:
         status = "Critical"
 
@@ -274,11 +302,11 @@ def calculate_health(reading):
 
 
 def update_telemetry():
+
     initialize_equipment_state()
 
-    st.session_state.telemetry_tick += 1
-
     for name, config in EQUIPMENT_CONFIG.items():
+
         reading = generate_reading(name, config)
 
         health, status = calculate_health(reading)
@@ -287,13 +315,14 @@ def update_telemetry():
         reading["status"] = status
 
         history = st.session_state.equipment_history[name]
+
         history.append(reading)
 
         st.session_state.equipment_history[name] = history[-60:]
 
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR NAVIGATION
 # ============================================================
 
 st.sidebar.title("⚙️ IndustrialPredictAI")
@@ -310,7 +339,17 @@ page = st.sidebar.radio(
 st.sidebar.divider()
 
 st.sidebar.caption("IndustrialPredictAI v0.3")
-st.sidebar.caption("Industrial equipment intelligence")
+st.sidebar.caption("Industrial Equipment Intelligence")
+
+st.sidebar.markdown("---")
+
+if bundle is not None:
+
+    st.sidebar.success("AI4I Model: Loaded")
+
+else:
+
+    st.sidebar.warning("AI4I Model: Unavailable")
 
 
 # ============================================================
@@ -320,7 +359,9 @@ st.sidebar.caption("Industrial equipment intelligence")
 def show_live_monitor():
 
     st.markdown(
-        '<div class="main-title">Industrial Equipment Monitor</div>',
+        '<div class="main-title">'
+        'Industrial Equipment Monitor'
+        '</div>',
         unsafe_allow_html=True
     )
 
@@ -335,8 +376,9 @@ def show_live_monitor():
         """
         <div class="disclaimer">
         DEMONSTRATION MODE: Sensor readings are simulated.
-        Health scores and alerts are illustrative rule-based indicators,
-        not validated failure probabilities or engineering diagnoses.
+        Health scores and alerts are illustrative rule-based
+        indicators, not validated failure probabilities
+        or engineering diagnoses.
         </div>
         """,
         unsafe_allow_html=True
@@ -352,21 +394,33 @@ def show_live_monitor():
     latest = []
 
     for name in EQUIPMENT_CONFIG:
-        if st.session_state.equipment_history[name]:
-            latest.append(
-                st.session_state.equipment_history[name][-1]
-            )
+
+        history = st.session_state.equipment_history[name]
+
+        if history:
+            latest.append(history[-1])
 
     if not latest:
+
         st.info("Waiting for telemetry...")
         return
 
     telemetry_df = pd.DataFrame(latest)
 
     total_equipment = len(telemetry_df)
-    healthy = int((telemetry_df["status"] == "Healthy").sum())
-    warning = int((telemetry_df["status"] == "Warning").sum())
-    critical = int((telemetry_df["status"] == "Critical").sum())
+
+    healthy = int(
+        (telemetry_df["status"] == "Healthy").sum()
+    )
+
+    warning = int(
+        (telemetry_df["status"] == "Warning").sum()
+    )
+
+    critical = int(
+        (telemetry_df["status"] == "Critical").sum()
+    )
+
     average_health = telemetry_df["health"].mean()
 
     st.subheader("Operational Overview")
@@ -377,7 +431,11 @@ def show_live_monitor():
     c2.metric("Healthy", healthy)
     c3.metric("Warning", warning)
     c4.metric("Critical", critical)
-    c5.metric("Average Health", f"{average_health:.1f}%")
+
+    c5.metric(
+        "Average Health",
+        f"{average_health:.1f}%"
+    )
 
     st.divider()
 
@@ -386,6 +444,7 @@ def show_live_monitor():
     for _, row in telemetry_df.iterrows():
 
         with st.container(border=True):
+
             col1, col2, col3, col4 = st.columns(4)
 
             col1.markdown(f"**{row['equipment']}**")
@@ -407,21 +466,24 @@ def show_live_monitor():
             )
 
             if row["status"] == "Healthy":
+
                 st.success("Status: Healthy")
+
             elif row["status"] == "Warning":
+
                 st.warning("Status: Warning")
+
             else:
+
                 st.error("Status: Critical")
 
     st.divider()
 
     st.subheader("Telemetry Trends")
 
-    equipment_names = list(EQUIPMENT_CONFIG.keys())
-
     selected_equipment = st.selectbox(
         "Select equipment",
-        equipment_names,
+        list(EQUIPMENT_CONFIG.keys()),
         key="trend_equipment"
     )
 
@@ -474,9 +536,13 @@ def show_live_monitor():
     ]
 
     if alerts.empty:
+
         st.success("No active simulated alerts.")
+
     else:
+
         for _, row in alerts.iterrows():
+
             st.warning(
                 f"{row['equipment']}: {row['status']} "
                 f"(health score: {row['health']}%)"
@@ -508,13 +574,15 @@ def show_failure_predictor():
     )
 
     if bundle is None:
+
         st.error(
-            f"{bundle_error} "
-            "Place failure_prediction_bundle.joblib "
-            "inside the models folder and commit it to the repository. "
-            "If it exists, make sure scikit-learn/xgboost versions in "
-            "requirements.txt match the ones used for training."
+            "AI4I model is currently unavailable. "
+            "Place failure_prediction_bundle.joblib inside "
+            "the models folder and commit it to GitHub."
         )
+
+        st.caption(bundle_error)
+
         return
 
     st.info(
@@ -527,6 +595,7 @@ def show_failure_predictor():
     col1, col2 = st.columns(2)
 
     with col1:
+
         product_type = st.selectbox(
             "Product Type",
             ["L", "M", "H"]
@@ -549,6 +618,7 @@ def show_failure_predictor():
         )
 
     with col2:
+
         rotational_speed = st.number_input(
             "Rotational Speed (rpm)",
             min_value=1000,
@@ -586,52 +656,68 @@ def show_failure_predictor():
             "Tool wear [min]": tool_wear
         }])
 
-        probability = float(
-            bundle["pipeline"].predict_proba(
-                input_data
-            )[0, 1]
-        )
+        try:
 
-        prediction = int(
-            probability >= bundle["threshold"]
-        )
+            probability = float(
+                bundle["pipeline"].predict_proba(
+                    input_data
+                )[0, 1]
+            )
 
-        st.divider()
-        st.subheader("Prediction Result")
+            prediction = int(
+                probability >= bundle["threshold"]
+            )
 
-        st.metric(
-            "Estimated Failure Probability",
-            f"{probability * 100:.2f}%"
-        )
+            st.divider()
 
-        st.progress(
-            min(1.0, max(0.0, probability))
-        )
+            st.subheader("Prediction Result")
 
-        if prediction == 1:
+            st.metric(
+                "Estimated Failure Probability",
+                f"{probability * 100:.2f}%"
+            )
+
+            st.progress(
+                min(1.0, max(0.0, probability))
+            )
+
+            if prediction == 1:
+
+                st.error(
+                    "MODEL ALERT: The input is classified "
+                    "as a potential machine failure."
+                )
+
+                st.write(
+                    "Review the operating conditions and "
+                    "consider an appropriate inspection."
+                )
+
+            else:
+
+                st.success(
+                    "The input is classified as no machine "
+                    "failure at the selected threshold."
+                )
+
+            st.caption(
+                "This is a model estimate from a synthetic "
+                "benchmark dataset, not a guarantee of "
+                "equipment condition."
+            )
+
+        except Exception as exc:
+
             st.error(
-                "MODEL ALERT: The input is classified "
-                "as a potential machine failure."
+                f"Prediction failed: {type(exc).__name__}: {exc}"
             )
-            st.write(
-                "Review the operating conditions and "
-                "consider an appropriate inspection."
-            )
-        else:
-            st.success(
-                "The input is classified as no machine "
-                "failure at the selected threshold."
-            )
-
-        st.caption(
-            "This is a model estimate from a synthetic "
-            "benchmark dataset, not a guarantee of equipment condition."
-        )
 
     with st.expander("Model evaluation information"):
+
         st.write("Model:", bundle["model_name"])
         st.write("Dataset:", bundle["dataset"])
         st.write("Dataset type:", bundle["dataset_type"])
+
         st.json(bundle["metrics"])
 
 
@@ -683,14 +769,17 @@ def show_about():
 
 
 # ============================================================
-# ROUTING
+# APPLICATION ROUTING
 # ============================================================
 
 if page == "Live Equipment Monitor":
+
     show_live_monitor()
 
 elif page == "AI4I Failure Predictor":
+
     show_failure_predictor()
 
 else:
+
     show_about()
