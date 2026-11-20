@@ -823,16 +823,16 @@ def show_failure_predictor():
                 "The input is classified as no machine "
                 "failure at the selected threshold."
             )
-
         st.caption(
             "This is a model estimate from a synthetic "
             "benchmark dataset, not a guarantee of equipment condition."
         )
-                    with st.expander("Why did the model make this prediction?"):
-                show_shap_explanation(
-                    bundle["pipeline"],
-                    input_data
-                )
+
+        with st.expander("Why did the model make this prediction?"):
+            show_shap_explanation(
+                bundle["pipeline"],
+                input_data
+            )
 
     with st.expander("Model evaluation information"):
 
