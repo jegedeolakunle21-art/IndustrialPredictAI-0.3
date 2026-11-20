@@ -582,6 +582,10 @@ def show_live_monitor():
 # AI4I FAILURE PREDICTOR
 # ============================================================
 
+# ============================================================
+# AI4I FAILURE PREDICTOR
+# ============================================================
+
 def show_failure_predictor():
 
     st.title("AI4I Machine Failure Predictor")
@@ -596,153 +600,24 @@ def show_failure_predictor():
         real motors, pumps or generators.
         """
     )
-if bundle is None:
 
-    st.error("AI4I model could not be loaded.")
+    if bundle is None:
 
-    st.code(str(bundle_error))
+        st.error("AI4I model could not be loaded.")
 
-    st.info(
-        "Check the model file location, model bundle "
-        "structure and Python package compatibility."
-    )
+        st.code(str(bundle_error))
 
-    return
+        st.info(
+            "Check the model file location, model bundle "
+            "structure and Python package compatibility."
+        )
+
+        return
 
     st.info(
         f"Selected model: {bundle['model_name']} | "
         f"Decision threshold: {bundle['threshold']:.2f}"
     )
-
-    st.subheader("Enter manufacturing operating conditions")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        product_type = st.selectbox(
-            "Product Type",
-            ["L", "M", "H"]
-        )
-
-        air_temp = st.number_input(
-            "Air Temperature (K)",
-            min_value=295.0,
-            max_value=305.0,
-            value=300.0,
-            step=0.1
-        )
-
-        process_temp = st.number_input(
-            "Process Temperature (K)",
-            min_value=305.0,
-            max_value=315.0,
-            value=310.0,
-            step=0.1
-        )
-
-    with col2:
-
-        rotational_speed = st.number_input(
-            "Rotational Speed (rpm)",
-            min_value=1000,
-            max_value=3000,
-            value=1500
-        )
-
-        torque = st.number_input(
-            "Torque (Nm)",
-            min_value=0.0,
-            max_value=100.0,
-            value=40.0,
-            step=0.5
-        )
-
-        tool_wear = st.number_input(
-            "Tool Wear (minutes)",
-            min_value=0,
-            max_value=300,
-            value=100
-        )
-
-    if st.button(
-        "Predict Machine Failure",
-        type="primary",
-        use_container_width=True
-    ):
-
-        input_data = pd.DataFrame([{
-            "Type": product_type,
-            "Air temperature [K]": air_temp,
-            "Process temperature [K]": process_temp,
-            "Rotational speed [rpm]": rotational_speed,
-            "Torque [Nm]": torque,
-            "Tool wear [min]": tool_wear
-        }])
-
-        try:
-
-            probability = float(
-                bundle["pipeline"].predict_proba(
-                    input_data
-                )[0, 1]
-            )
-
-            prediction = int(
-                probability >= bundle["threshold"]
-            )
-
-            st.divider()
-
-            st.subheader("Prediction Result")
-
-            st.metric(
-                "Estimated Failure Probability",
-                f"{probability * 100:.2f}%"
-            )
-
-            st.progress(
-                min(1.0, max(0.0, probability))
-            )
-
-            if prediction == 1:
-
-                st.error(
-                    "MODEL ALERT: The input is classified "
-                    "as a potential machine failure."
-                )
-
-                st.write(
-                    "Review the operating conditions and "
-                    "consider an appropriate inspection."
-                )
-
-            else:
-
-                st.success(
-                    "The input is classified as no machine "
-                    "failure at the selected threshold."
-                )
-
-            st.caption(
-                "This is a model estimate from a synthetic "
-                "benchmark dataset, not a guarantee of "
-                "equipment condition."
-            )
-
-        except Exception as exc:
-
-            st.error(
-                f"Prediction failed: {type(exc).__name__}: {exc}"
-            )
-
-    with st.expander("Model evaluation information"):
-
-        st.write("Model:", bundle["model_name"])
-        st.write("Dataset:", bundle["dataset"])
-        st.write("Dataset type:", bundle["dataset_type"])
-
-        st.json(bundle["metrics"])
 
 
 # ============================================================
