@@ -8,3 +8,4 @@ joblib==1.6.0
 xgboost
 shap==0.48.0
 matplotlib>=3.8,<4
+scipy
