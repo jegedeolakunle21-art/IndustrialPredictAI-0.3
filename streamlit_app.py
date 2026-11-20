@@ -640,12 +640,19 @@ def show_shap_explanation(model_pipeline, input_data):
             values = shap_values[0]
 
         # Select the corresponding expected model output
+                # Select the corresponding expected model output
         if base_values.ndim >= 2:
             base_value = base_values[0, 1]
         elif base_values.ndim == 1 and base_values.size > 1:
             base_value = base_values[1]
         else:
             base_value = base_values.reshape(-1)[0]
+
+        # Convert base value safely to a numeric value
+        if isinstance(base_value, str):
+            base_value = base_value.strip().strip("[]")
+
+        base_values=base_value,
 
         explanation = shap.Explanation(
             values=values,
