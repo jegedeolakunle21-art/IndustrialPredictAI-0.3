@@ -20,15 +20,29 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-MODEL_PATH = os.path.join(
-    PROJECT_DIR,
-    "failure_prediction_bundle.joblib"
+MODEL_CANDIDATES = [
+    os.path.join(
+        PROJECT_DIR,
+        "models",
+        "failure_prediction_bundle.joblib"
+    ),
+    os.path.join(
+        PROJECT_DIR,
+        "failure_prediction_bundle.joblib"
+    )
+]
+
+MODEL_PATH = next(
+    (
+        path for path in MODEL_CANDIDATES
+        if os.path.isfile(path)
+    ),
+    None
 )
+
 
 
 
@@ -123,13 +137,20 @@ st.markdown(
 @st.cache_resource(show_spinner="Loading AI4I prediction model...")
 def load_model_bundle():
 
-    if not os.path.isfile(MODEL_PATH):
+    if MODEL_PATH is None:
         return None, (
-            f"Model file not found at: {MODEL_PATH}"
+            "MODEL FILE NOT FOUND. "
+            f"Project directory: {PROJECT_DIR}. "
+            f"Files found: {os.listdir(PROJECT_DIR)}"
         )
 
     try:
         loaded_bundle = joblib.load(MODEL_PATH)
+
+        if not isinstance(loaded_bundle, dict):
+            return None, (
+                "Invalid model bundle: expected a dictionary."
+            )
 
         required_keys = [
             "pipeline",
@@ -147,7 +168,7 @@ def load_model_bundle():
 
         if missing_keys:
             return None, (
-                "Invalid model bundle. Missing keys: "
+                "Missing model bundle keys: "
                 + ", ".join(missing_keys)
             )
 
@@ -155,11 +176,9 @@ def load_model_bundle():
 
     except Exception as exc:
         return None, (
-            f"Model loading failed: {type(exc).__name__}: {exc}"
+            f"{type(exc).__name__}: {exc}"
         )
 
-
-bundle, bundle_error = load_model_bundle()
 
 
 # ============================================================
