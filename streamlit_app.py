@@ -706,153 +706,179 @@ def show_shap_explanation(model_pipeline, input_data):
             f"{type(exc).__name__}: {exc}"
         )
 
+def show_shap_explanation(model_pipeline, input_data):
 
-def show_failure_predictor():
+    try:
+        import shap
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from scipy import sparse
 
-    st.title("AI4I Machine Failure Predictor")
-
-    st.markdown(
-        """
-        This page uses the trained AI4I 2020 manufacturing
-        failure-prediction model.
-
-        It is separate from the simulated equipment monitor.
-        The model is not validated for direct prediction on
-        real motors, pumps or generators.
-        """
-    )
-
-    if bundle is None:
-        st.error("AI4I model could not be loaded.")
-        st.code(str(bundle_error))
-        return
-
-    st.info(
-        f"Selected model: {bundle['model_name']} | "
-        f"Decision threshold: {bundle['threshold']:.2f}"
-    )
-
-    st.subheader("Enter manufacturing operating conditions")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        product_type = st.selectbox(
-            "Product Type",
-            ["L", "M", "H"]
-        )
-
-        air_temp = st.number_input(
-            "Air Temperature (K)",
-            min_value=295.0,
-            max_value=305.0,
-            value=300.0,
-            step=0.1
-        )
-
-        process_temp = st.number_input(
-            "Process Temperature (K)",
-            min_value=305.0,
-            max_value=315.0,
-            value=310.0,
-            step=0.1
-        )
-
-    with col2:
-
-        rotational_speed = st.number_input(
-            "Rotational Speed (rpm)",
-            min_value=1000,
-            max_value=3000,
-            value=1500
-        )
-
-        torque = st.number_input(
-            "Torque (Nm)",
-            min_value=0.0,
-            max_value=100.0,
-            value=40.0,
-            step=0.5
-        )
-
-        tool_wear = st.number_input(
-            "Tool Wear (minutes)",
-            min_value=0,
-            max_value=300,
-            value=100
-        )
-
-    if st.button(
-        "Predict Machine Failure",
-        type="primary",
-        use_container_width=True
-    ):
-
-        input_data = pd.DataFrame([{
-            "Type": product_type,
-            "Air temperature [K]": air_temp,
-            "Process temperature [K]": process_temp,
-            "Rotational speed [rpm]": rotational_speed,
-            "Torque [Nm]": torque,
-            "Tool wear [min]": tool_wear
-        }])
-
-        probability = float(
-            bundle["pipeline"].predict_proba(
-                input_data
-            )[0, 1]
-        )
-
-        prediction = int(
-            probability >= bundle["threshold"]
-        )
-
-        st.divider()
-        st.subheader("Prediction Result")
-
-        st.metric(
-            "Estimated Failure Probability",
-            f"{probability * 100:.2f}%"
-        )
-
-        st.progress(
-            min(1.0, max(0.0, probability))
-        )
-
-        if prediction == 1:
-            st.error(
-                "MODEL ALERT: The input is classified "
-                "as a potential machine failure."
+        # Check that the model is a preprocessing pipeline
+        if not hasattr(model_pipeline, "steps") or len(model_pipeline.steps) < 2:
+            st.warning(
+                "SHAP requires a pipeline containing preprocessing "
+                "and a final estimator."
             )
+            return
 
-            st.write(
-                "Review the operating conditions and "
-                "consider an appropriate inspection."
+        preprocessing = model_pipeline[:-1]
+        estimator = model_pipeline.steps[-1][1]
+
+        # Apply the original preprocessing
+        transformed_data = preprocessing.transform(input_data)
+
+        if sparse.issparse(transformed_data):
+            transformed_data = transformed_data.toarray()
+
+        transformed_data = np.asarray(
+            transformed_data,
+            dtype=float
+        )
+
+        # Get transformed feature names
+        try:
+            feature_names = list(
+                preprocessing.get_feature_names_out()
             )
+        except Exception:
+            feature_names = [
+                f"Feature {i + 1}"
+                for i in range(transformed_data.shape[1])
+            ]
+
+        if len(feature_names) != transformed_data.shape[1]:
+            feature_names = [
+                f"Feature {i + 1}"
+                for i in range(transformed_data.shape[1])
+            ]
+
+        # Convert SHAP outputs safely, including strings such as [5E-1]
+        def convert_to_numeric(value):
+            array = np.asarray(value)
+
+            if array.dtype.kind in ("U", "S", "O"):
+                converted = []
+
+                for item in array.reshape(-1):
+                    item_text = str(item).strip()
+
+                    if item_text.startswith("[") and item_text.endswith("]"):
+                        item_text = item_text[1:-1].strip()
+
+                    numbers = np.fromstring(
+                        item_text,
+                        sep=",",
+                        dtype=float
+                    )
+
+                    if numbers.size == 0:
+                        numbers = np.fromstring(
+                            item_text,
+                            sep=" ",
+                            dtype=float
+                        )
+
+                    if numbers.size == 0:
+                        numbers = np.array(
+                            [float(item_text)],
+                            dtype=float
+                        )
+
+                    converted.extend(numbers.tolist())
+
+                return np.asarray(converted, dtype=float)
+
+            return np.asarray(array, dtype=float)
+
+        # Explain the final tree-based estimator
+        explainer = shap.TreeExplainer(estimator)
+
+        shap_result = explainer(transformed_data)
+
+        shap_values = convert_to_numeric(
+            shap_result.values
+        )
+
+        # Restore the expected feature dimensions
+        if shap_values.size == transformed_data.shape[1]:
+            values = shap_values.reshape(-1)
+
+        elif shap_values.size == transformed_data.shape[1] * 2:
+            values = shap_values.reshape(
+                -1, transformed_data.shape[1], 2
+            )[0, :, 1]
 
         else:
-            st.success(
-                "The input is classified as no machine "
-                "failure at the selected threshold."
+            raise ValueError(
+                "Unexpected SHAP values shape: "
+                f"{shap_result.values.shape}"
             )
-        st.caption(
-            "This is a model estimate from a synthetic "
-            "benchmark dataset, not a guarantee of equipment condition."
+
+        # Obtain the expected model output
+        base_values = convert_to_numeric(
+            shap_result.base_values
         )
 
-        with st.expander("Why did the model make this prediction?"):
-            show_shap_explanation(
-                bundle["pipeline"],
-                input_data
-            )
+        if base_values.size == 1:
+            base_value = float(base_values[0])
 
-    with st.expander("Model evaluation information"):
+        elif base_values.size == 2:
+            base_value = float(base_values[1])
 
-        st.write("Model:", bundle["model_name"])
-        st.write("Dataset:", bundle["dataset"])
-        st.write("Dataset type:", bundle["dataset_type"])
-        st.json(bundle["metrics"])
+        else:
+            base_value = float(base_values.reshape(-1)[0])
+
+        # Construct the explanation
+        explanation = shap.Explanation(
+            values=values,
+            base_values=base_value,
+            data=transformed_data[0],
+            feature_names=feature_names
+        )
+
+        st.subheader("AI Prediction Explanation")
+
+        st.markdown(
+            "This chart shows how the processed input features "
+            "contribute to the model output for this prediction."
+        )
+
+        # Display SHAP waterfall plot
+        plt.figure()
+
+        shap.plots.waterfall(
+            explanation,
+            max_display=10,
+            show=False
+        )
+
+        fig = plt.gcf()
+
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
+
+        plt.close(fig)
+
+        st.caption(
+            "SHAP contributions explain the model output, "
+            "which may be in log-odds rather than probability units. "
+            "They do not establish causation."
+        )
+
+    except Exception as exc:
+
+        st.warning(
+            "The prediction succeeded, but the SHAP explanation "
+            "could not be generated."
+        )
+
+        st.code(
+            f"{type(exc).__name__}: {exc}"
+        )
+
 
 # ============================================================
 # ABOUT PAGE
