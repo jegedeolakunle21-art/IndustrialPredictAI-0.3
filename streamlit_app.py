@@ -581,6 +581,119 @@ def show_live_monitor():
 # AI4I FAILURE PREDICTOR
 # ============================================================
 
+def show_shap_explanation(model_pipeline, input_data):
+
+    try:
+        import shap
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from scipy import sparse
+
+        # Identify the preprocessing and prediction stages
+        if not hasattr(model_pipeline, "steps") or len(model_pipeline.steps) < 2:
+            st.warning(
+                "SHAP explanation requires a pipeline "
+                "with preprocessing and a final estimator."
+            )
+            return
+
+        preprocessing = model_pipeline[:-1]
+        estimator = model_pipeline.steps[-1][1]
+
+        # Apply the same preprocessing used during training
+        transformed_data = preprocessing.transform(input_data)
+
+        if sparse.issparse(transformed_data):
+            transformed_data = transformed_data.toarray()
+
+        transformed_data = np.asarray(transformed_data)
+
+        # Obtain feature names after preprocessing
+        try:
+            feature_names = list(
+                preprocessing.get_feature_names_out()
+            )
+        except Exception:
+            feature_names = [
+                f"Feature {i + 1}"
+                for i in range(transformed_data.shape[1])
+            ]
+
+        if len(feature_names) != transformed_data.shape[1]:
+            feature_names = [
+                f"Feature {i + 1}"
+                for i in range(transformed_data.shape[1])
+            ]
+
+        # Explain the final XGBoost estimator
+        explainer = shap.TreeExplainer(estimator)
+
+        shap_explanation = explainer(transformed_data)
+
+        shap_values = np.asarray(shap_explanation.values)
+        base_values = np.asarray(shap_explanation.base_values)
+
+        # Select the failure class (class 1) when output is 3D
+        if shap_values.ndim == 3:
+            values = shap_values[0, :, 1]
+        else:
+            values = shap_values[0]
+
+        # Select the corresponding expected model output
+        if base_values.ndim >= 2:
+            base_value = base_values[0, 1]
+        elif base_values.ndim == 1 and base_values.size > 1:
+            base_value = base_values[1]
+        else:
+            base_value = base_values.reshape(-1)[0]
+
+        explanation = shap.Explanation(
+            values=values,
+            base_values=float(base_value),
+            data=transformed_data[0],
+            feature_names=feature_names
+        )
+
+        st.subheader("AI Prediction Explanation")
+
+        st.markdown(
+            "The chart shows how each processed input feature "
+            "contributes to the model output for this prediction."
+        )
+
+        shap.plots.waterfall(
+            explanation,
+            max_display=10,
+            show=False
+        )
+
+        fig = plt.gcf()
+
+        st.pyplot(
+            fig,
+            use_container_width=True
+        )
+
+        plt.close(fig)
+
+        st.caption(
+            "SHAP contributions explain the model output, "
+            "which may be in log-odds rather than probability units. "
+            "They are not causal explanations."
+        )
+
+    except Exception as exc:
+
+        st.warning(
+            "The prediction succeeded, but its SHAP explanation "
+            "could not be generated."
+        )
+
+        st.code(
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
 def show_failure_predictor():
 
     st.title("AI4I Machine Failure Predictor")
@@ -715,6 +828,13 @@ def show_failure_predictor():
             "This is a model estimate from a synthetic "
             "benchmark dataset, not a guarantee of equipment condition."
         )
+
+    with st.expander("Why did the model make this prediction?"):
+
+    show_shap_explanation(
+        bundle["pipeline"],
+        input_data
+    )
 
     with st.expander("Model evaluation information"):
 
