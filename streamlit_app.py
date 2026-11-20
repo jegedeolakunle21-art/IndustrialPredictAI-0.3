@@ -829,12 +829,12 @@ def show_failure_predictor():
             "benchmark dataset, not a guarantee of equipment condition."
         )
 
-    with st.expander("Why did the model make this prediction?"):
+            with st.expander("Why did the model make this prediction?"):
 
-    show_shap_explanation(
-        bundle["pipeline"],
-        input_data
-    )
+            show_shap_explanation(
+                bundle["pipeline"],
+                input_data
+            )
 
     with st.expander("Model evaluation information"):
 
