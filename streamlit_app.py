@@ -22,11 +22,14 @@ st.set_page_config(
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 MODEL_PATH = os.path.join(
     PROJECT_DIR,
-    "models",
     "failure_prediction_bundle.joblib"
 )
+
 
 
 # ============================================================
