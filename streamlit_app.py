@@ -178,6 +178,8 @@ def load_model_bundle():
         return None, (
             f"{type(exc).__name__}: {exc}"
         )
+        # Load AI4I model bundle
+bundle, bundle_error = load_model_bundle()
 
 
 
@@ -594,18 +596,18 @@ def show_failure_predictor():
         real motors, pumps or generators.
         """
     )
+if bundle is None:
 
-    if bundle is None:
+    st.error("AI4I model could not be loaded.")
 
-        st.error(
-            "AI4I model is currently unavailable. "
-            "Place failure_prediction_bundle.joblib inside "
-            "the models folder and commit it to GitHub."
-        )
+    st.code(str(bundle_error))
 
-        st.caption(bundle_error)
+    st.info(
+        "Check the model file location, model bundle "
+        "structure and Python package compatibility."
+    )
 
-        return
+    return
 
     st.info(
         f"Selected model: {bundle['model_name']} | "
