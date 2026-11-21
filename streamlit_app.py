@@ -577,11 +577,14 @@ def show_live_monitor():
         "Readings are generated locally for demonstration."
     )
 
+
 # ============================================================
-# SHAP EXPLANATION FUNCTION - NUMERIC CONVERSION FIX
+# AI4I FAILURE PREDICTOR - SHAP EXPLANATION
 # ============================================================
 
 def show_shap_explanation(model_pipeline, input_data):
+
+    import traceback
 
     try:
         import shap
@@ -589,11 +592,26 @@ def show_shap_explanation(model_pipeline, input_data):
         import matplotlib.pyplot as plt
         from scipy import sparse
 
-        # Separate preprocessing and estimator
+        # ----------------------------------------------------
+        # 1. Validate model pipeline
+        # ----------------------------------------------------
+
+        if (
+            not hasattr(model_pipeline, "steps")
+            or len(model_pipeline.steps) < 2
+        ):
+            raise ValueError(
+                "The supplied model is not a valid "
+                "preprocessing and prediction pipeline."
+            )
+
         preprocessing = model_pipeline[:-1]
         estimator = model_pipeline.steps[-1][1]
 
-        # Transform input using the trained preprocessing pipeline
+        # ----------------------------------------------------
+        # 2. Transform input data
+        # ----------------------------------------------------
+
         transformed_data = preprocessing.transform(input_data)
 
         if sparse.issparse(transformed_data):
@@ -604,26 +622,31 @@ def show_shap_explanation(model_pipeline, input_data):
             dtype=np.float64
         )
 
-        # Obtain feature names
+        # ----------------------------------------------------
+        # 3. Obtain transformed feature names
+        # ----------------------------------------------------
+
         try:
             feature_names = list(
                 preprocessing.get_feature_names_out()
             )
-        
-    except Exception as exc:
 
-        import traceback
+        except Exception:
+            feature_names = [
+                f"Feature {i + 1}"
+                for i in range(transformed_data.shape[1])
+            ]
 
-        st.warning(
-            "SHAP explanation failed. Diagnostic details:"
-        )
+        if len(feature_names) != transformed_data.shape[1]:
+            feature_names = [
+                f"Feature {i + 1}"
+                for i in range(transformed_data.shape[1])
+            ]
 
-        st.code(
-            traceback.format_exc()
-        )
+        # ----------------------------------------------------
+        # 4. Create SHAP explainer
+        # ----------------------------------------------------
 
-
-        # Explain the XGBoost estimator
         explainer = shap.TreeExplainer(estimator)
 
         raw_shap_values = explainer.shap_values(
@@ -632,10 +655,14 @@ def show_shap_explanation(model_pipeline, input_data):
 
         raw_base_value = explainer.expected_value
 
-        # Safely normalize numeric values
+        # ----------------------------------------------------
+        # 5. Convert SHAP values safely
+        # ----------------------------------------------------
+
         def clean_numeric(value):
 
             if isinstance(value, str):
+
                 value = value.strip()
 
                 if value.startswith("[") and value.endswith("]"):
@@ -644,6 +671,7 @@ def show_shap_explanation(model_pipeline, input_data):
                 return float(value)
 
             if isinstance(value, (list, tuple, np.ndarray)):
+
                 return np.asarray(
                     value,
                     dtype=np.float64
@@ -651,49 +679,69 @@ def show_shap_explanation(model_pipeline, input_data):
 
             return float(value)
 
-        # Convert SHAP values
         shap_values = clean_numeric(raw_shap_values)
 
+        # Select positive class for binary classification
         if shap_values.ndim == 3:
             values = shap_values[0, :, 1]
+
         elif shap_values.ndim == 2:
             values = shap_values[0]
+
         else:
             values = shap_values.reshape(-1)
 
-        # Convert base value
+        # ----------------------------------------------------
+        # 6. Convert expected value
+        # ----------------------------------------------------
+
         base_array = clean_numeric(raw_base_value)
 
         if np.ndim(base_array) > 0:
-            base_array = np.asarray(base_array).reshape(-1)
+
+            base_array = np.asarray(
+                base_array,
+                dtype=np.float64
+            ).reshape(-1)
 
             if base_array.size > 1:
                 base_value = float(base_array[1])
             else:
                 base_value = float(base_array[0])
+
         else:
             base_value = float(base_array)
 
-        # Validate dimensions
+        # ----------------------------------------------------
+        # 7. Validate SHAP dimensions
+        # ----------------------------------------------------
+
         if len(values) != transformed_data.shape[1]:
+
             raise ValueError(
                 "SHAP feature count does not match "
                 "the transformed input feature count."
             )
 
-        # Create explanation
+        # ----------------------------------------------------
+        # 8. Construct SHAP explanation
+        # ----------------------------------------------------
+
         explanation = shap.Explanation(
-            values=np.asarray(values, dtype=float),
+            values=np.asarray(values, dtype=np.float64),
             base_values=base_value,
             data=transformed_data[0],
             feature_names=feature_names
         )
 
-        # Display SHAP chart
+        # ----------------------------------------------------
+        # 9. Display waterfall chart
+        # ----------------------------------------------------
+
         st.subheader("AI Prediction Explanation")
 
         st.markdown(
-            "This chart explains how the processed input "
+            "This chart shows how the processed input "
             "features contribute to the model output."
         )
 
@@ -719,6 +767,10 @@ def show_shap_explanation(model_pipeline, input_data):
             "They do not establish causation."
         )
 
+    # --------------------------------------------------------
+    # 10. Handle SHAP errors
+    # --------------------------------------------------------
+
     except Exception as exc:
 
         st.warning(
@@ -727,9 +779,9 @@ def show_shap_explanation(model_pipeline, input_data):
         )
 
         st.code(
-            f"{type(exc).__name__}: {exc}"
+            traceback.format_exc()
         )
-  
+
 # ============================================================
 # AI4I FAILURE PREDICTOR
 # ============================================================
