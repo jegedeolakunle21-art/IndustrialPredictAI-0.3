@@ -576,9 +576,8 @@ def show_live_monitor():
         "Dashboard refreshes every 5 seconds. "
         "Readings are generated locally for demonstration."
     )
-
 # ============================================================
-# AI4I FAILURE PREDICTOR
+# AI4I FAILURE PREDICTOR - SHAP EXPLANATION
 # ============================================================
 
 def show_shap_explanation(model_pipeline, input_data):
@@ -589,126 +588,7 @@ def show_shap_explanation(model_pipeline, input_data):
         import matplotlib.pyplot as plt
         from scipy import sparse
 
-        # Identify the preprocessing and prediction stages
-        if not hasattr(model_pipeline, "steps") or len(model_pipeline.steps) < 2:
-            st.warning(
-                "SHAP explanation requires a pipeline "
-                "with preprocessing and a final estimator."
-            )
-            return
-
-        preprocessing = model_pipeline[:-1]
-        estimator = model_pipeline.steps[-1][1]
-
-        # Apply the same preprocessing used during training
-        transformed_data = preprocessing.transform(input_data)
-
-        if sparse.issparse(transformed_data):
-            transformed_data = transformed_data.toarray()
-
-        transformed_data = np.asarray(transformed_data)
-
-                # Obtain feature names after preprocessing
-        try:
-            feature_names = list(
-                preprocessing.get_feature_names_out()
-            )
-        except Exception:
-            feature_names = [
-                f"Feature {i + 1}"
-                for i in range(transformed_data.shape[1])
-            ]
-
-        if len(feature_names) != transformed_data.shape[1]:
-            feature_names = [
-                f"Feature {i + 1}"
-                for i in range(transformed_data.shape[1])
-            ]
-
-        # Explain the final XGBoost estimator
-        explainer = shap.TreeExplainer(estimator)
-
-        shap_explanation = explainer(transformed_data)
-
-        shap_values = np.asarray(shap_explanation.values)
-        base_values = np.asarray(shap_explanation.base_values)
-
-        # Select the failure class (class 1) when output is 3D
-        if shap_values.ndim == 3:
-            values = shap_values[0, :, 1]
-        else:
-            values = shap_values[0]
-
-        # Select the corresponding expected model output
-                # Select the corresponding expected model output
-        if base_values.ndim >= 2:
-            base_value = base_values[0, 1]
-        elif base_values.ndim == 1 and base_values.size > 1:
-            base_value = base_values[1]
-        else:
-            base_value = base_values.reshape(-1)[0]
-
-        # Convert base value safely to a numeric value
-        if isinstance(base_value, str):
-            base_value = base_value.strip().strip("[]")
-
-        base_values=base_value,
-
-        explanation = shap.Explanation(
-            values=values,
-            base_values=float(base_value),
-            data=transformed_data[0],
-            feature_names=feature_names
-        )
-
-        st.subheader("AI Prediction Explanation")
-
-        st.markdown(
-            "The chart shows how each processed input feature "
-            "contributes to the model output for this prediction."
-        )
-
-        shap.plots.waterfall(
-            explanation,
-            max_display=10,
-            show=False
-        )
-
-        fig = plt.gcf()
-
-        st.pyplot(
-            fig,
-            use_container_width=True
-        )
-
-        plt.close(fig)
-
-        st.caption(
-            "SHAP contributions explain the model output, "
-            "which may be in log-odds rather than probability units. "
-            "They are not causal explanations."
-        )
-
-    except Exception as exc:
-
-        st.warning(
-            "The prediction succeeded, but its SHAP explanation "
-            "could not be generated."
-        )
-
-        st.code(
-            f"{type(exc).__name__}: {exc}"
-        )
-
-def show_shap_explanation(model_pipeline, input_data):
-
-    try:
-        import shap
-        import numpy as np
-        import matplotlib.pyplot as plt
-        from scipy import sparse
-
-        # Check that the model is a preprocessing pipeline
+        # Check model pipeline
         if not hasattr(model_pipeline, "steps") or len(model_pipeline.steps) < 2:
             st.warning(
                 "SHAP requires a pipeline containing preprocessing "
@@ -716,10 +596,11 @@ def show_shap_explanation(model_pipeline, input_data):
             )
             return
 
+        # Separate preprocessing and estimator
         preprocessing = model_pipeline[:-1]
         estimator = model_pipeline.steps[-1][1]
 
-        # Apply the original preprocessing
+        # Transform input data
         transformed_data = preprocessing.transform(input_data)
 
         if sparse.issparse(transformed_data):
@@ -730,7 +611,7 @@ def show_shap_explanation(model_pipeline, input_data):
             dtype=float
         )
 
-        # Get transformed feature names
+        # Get feature names
         try:
             feature_names = list(
                 preprocessing.get_feature_names_out()
@@ -747,98 +628,54 @@ def show_shap_explanation(model_pipeline, input_data):
                 for i in range(transformed_data.shape[1])
             ]
 
-        # Convert SHAP outputs safely, including strings such as [5E-1]
-        def convert_to_numeric(value):
-            array = np.asarray(value)
-
-            if array.dtype.kind in ("U", "S", "O"):
-                converted = []
-
-                for item in array.reshape(-1):
-                    item_text = str(item).strip()
-
-                    if item_text.startswith("[") and item_text.endswith("]"):
-                        item_text = item_text[1:-1].strip()
-
-                    numbers = np.fromstring(
-                        item_text,
-                        sep=",",
-                        dtype=float
-                    )
-
-                    if numbers.size == 0:
-                        numbers = np.fromstring(
-                            item_text,
-                            sep=" ",
-                            dtype=float
-                        )
-
-                    if numbers.size == 0:
-                        numbers = np.array(
-                            [float(item_text)],
-                            dtype=float
-                        )
-
-                    converted.extend(numbers.tolist())
-
-                return np.asarray(converted, dtype=float)
-
-            return np.asarray(array, dtype=float)
-
-        # Explain the final tree-based estimator
+        # Create SHAP explainer
         explainer = shap.TreeExplainer(estimator)
 
         shap_result = explainer(transformed_data)
 
-        shap_values = convert_to_numeric(
-            shap_result.values
+        # Convert SHAP values to numeric format
+        shap_values = np.asarray(
+            shap_result.values,
+            dtype=float
         )
 
-        # Restore the expected feature dimensions
-        if shap_values.size == transformed_data.shape[1]:
-            values = shap_values.reshape(-1)
-
-        elif shap_values.size == transformed_data.shape[1] * 2:
-            values = shap_values.reshape(
-                -1, transformed_data.shape[1], 2
-            )[0, :, 1]
-
+        # Handle binary classification dimensions
+        if shap_values.ndim == 3:
+            values = shap_values[0, :, 1]
         else:
-            raise ValueError(
-                "Unexpected SHAP values shape: "
-                f"{shap_result.values.shape}"
-            )
+            values = shap_values[0]
 
-        # Obtain the expected model output
-        base_values = convert_to_numeric(
-            shap_result.base_values
+        # Extract base value
+        base_values = np.asarray(
+            shap_result.base_values,
+            dtype=float
         )
 
-        if base_values.size == 1:
-            base_value = float(base_values[0])
+        if base_values.ndim >= 2:
+            base_value = base_values[0, 1]
 
-        elif base_values.size == 2:
-            base_value = float(base_values[1])
+        elif base_values.ndim == 1 and base_values.size > 1:
+            base_value = base_values[1]
 
         else:
-            base_value = float(base_values.reshape(-1)[0])
+            base_value = base_values.reshape(-1)[0]
 
-        # Construct the explanation
+        # Create SHAP explanation
         explanation = shap.Explanation(
             values=values,
-            base_values=base_value,
+            base_values=float(base_value),
             data=transformed_data[0],
             feature_names=feature_names
         )
 
+        # Display explanation
         st.subheader("AI Prediction Explanation")
 
         st.markdown(
-            "This chart shows how the processed input features "
-            "contribute to the model output for this prediction."
+            "This chart shows how processed input features "
+            "contribute to the model output."
         )
 
-        # Display SHAP waterfall plot
         plt.figure()
 
         shap.plots.waterfall(
@@ -851,7 +688,7 @@ def show_shap_explanation(model_pipeline, input_data):
 
         st.pyplot(
             fig,
-            use_container_width=True
+            width="stretch"
         )
 
         plt.close(fig)
@@ -865,15 +702,13 @@ def show_shap_explanation(model_pipeline, input_data):
     except Exception as exc:
 
         st.warning(
-            "The prediction succeeded, but the SHAP explanation "
+            "The prediction succeeded, but its SHAP explanation "
             "could not be generated."
         )
 
         st.code(
             f"{type(exc).__name__}: {exc}"
         )
-
-
 # ============================================================
 # ABOUT PAGE
 # ============================================================
