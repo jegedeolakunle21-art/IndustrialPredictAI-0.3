@@ -577,6 +577,116 @@ def show_live_monitor():
         "Readings are generated locally for demonstration."
     )
 # ============================================================
+# SHAP EXPLANATION FUNCTION
+# ============================================================
+
+def show_shap_explanation(model_pipeline, input_data):
+
+    try:
+        import shap
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from scipy import sparse
+
+        # Separate preprocessing and estimator
+        preprocessing = model_pipeline[:-1]
+        estimator = model_pipeline.steps[-1][1]
+
+        # Transform input data
+        transformed_data = preprocessing.transform(input_data)
+
+        if sparse.issparse(transformed_data):
+            transformed_data = transformed_data.toarray()
+
+        transformed_data = np.asarray(
+            transformed_data,
+            dtype=float
+        )
+
+        # Get feature names
+        try:
+            feature_names = list(
+                preprocessing.get_feature_names_out()
+            )
+        except Exception:
+            feature_names = [
+                f"Feature {i + 1}"
+                for i in range(transformed_data.shape[1])
+            ]
+
+        # Create explainer
+        explainer = shap.TreeExplainer(estimator)
+
+        shap_result = explainer(transformed_data)
+
+        shap_values = np.asarray(
+            shap_result.values,
+            dtype=float
+        )
+
+        # Handle binary classification
+        if shap_values.ndim == 3:
+            values = shap_values[0, :, 1]
+        else:
+            values = shap_values[0]
+
+        base_values = np.asarray(
+            shap_result.base_values,
+            dtype=float
+        )
+
+        if base_values.ndim >= 2:
+            base_value = base_values[0, 1]
+        elif base_values.ndim == 1 and base_values.size > 1:
+            base_value = base_values[1]
+        else:
+            base_value = base_values.reshape(-1)[0]
+
+        # Build explanation
+        explanation = shap.Explanation(
+            values=values,
+            base_values=float(base_value),
+            data=transformed_data[0],
+            feature_names=feature_names
+        )
+
+        st.subheader("AI Prediction Explanation")
+
+        st.markdown(
+            "The chart shows how each processed input feature "
+            "contributes to the model output."
+        )
+
+        plt.figure()
+
+        shap.plots.waterfall(
+            explanation,
+            max_display=10,
+            show=False
+        )
+
+        fig = plt.gcf()
+
+        st.pyplot(fig, width="stretch")
+
+        plt.close(fig)
+
+        st.caption(
+            "SHAP contributions explain the model output. "
+            "They do not establish causation."
+        )
+
+    except Exception as exc:
+
+        st.warning(
+            "The prediction was generated, but the SHAP "
+            "explanation could not be displayed."
+        )
+
+        st.code(
+            f"{type(exc).__name__}: {exc}"
+        )    
+# ============================================================
 # AI4I FAILURE PREDICTOR
 # ============================================================
 
