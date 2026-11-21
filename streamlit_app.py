@@ -576,8 +576,9 @@ def show_live_monitor():
         "Dashboard refreshes every 5 seconds. "
         "Readings are generated locally for demonstration."
     )
+
 # ============================================================
-# SHAP EXPLANATION FUNCTION
+# SHAP EXPLANATION FUNCTION - NUMERIC CONVERSION FIX
 # ============================================================
 
 def show_shap_explanation(model_pipeline, input_data):
@@ -592,7 +593,7 @@ def show_shap_explanation(model_pipeline, input_data):
         preprocessing = model_pipeline[:-1]
         estimator = model_pipeline.steps[-1][1]
 
-        # Transform input data
+        # Transform input using the trained preprocessing pipeline
         transformed_data = preprocessing.transform(input_data)
 
         if sparse.issparse(transformed_data):
@@ -600,10 +601,10 @@ def show_shap_explanation(model_pipeline, input_data):
 
         transformed_data = np.asarray(
             transformed_data,
-            dtype=float
+            dtype=np.float64
         )
 
-        # Get feature names
+        # Obtain feature names
         try:
             feature_names = list(
                 preprocessing.get_feature_names_out()
@@ -614,47 +615,78 @@ def show_shap_explanation(model_pipeline, input_data):
                 for i in range(transformed_data.shape[1])
             ]
 
-        # Create explainer
+        # Explain the XGBoost estimator
         explainer = shap.TreeExplainer(estimator)
 
-        shap_result = explainer(transformed_data)
-
-        shap_values = np.asarray(
-            shap_result.values,
-            dtype=float
+        raw_shap_values = explainer.shap_values(
+            transformed_data
         )
 
-        # Handle binary classification
+        raw_base_value = explainer.expected_value
+
+        # Safely normalize numeric values
+        def clean_numeric(value):
+
+            if isinstance(value, str):
+                value = value.strip()
+
+                if value.startswith("[") and value.endswith("]"):
+                    value = value[1:-1].strip()
+
+                return float(value)
+
+            if isinstance(value, (list, tuple, np.ndarray)):
+                return np.asarray(
+                    value,
+                    dtype=np.float64
+                )
+
+            return float(value)
+
+        # Convert SHAP values
+        shap_values = clean_numeric(raw_shap_values)
+
         if shap_values.ndim == 3:
             values = shap_values[0, :, 1]
-        else:
+        elif shap_values.ndim == 2:
             values = shap_values[0]
-
-        base_values = np.asarray(
-            shap_result.base_values,
-            dtype=float
-        )
-
-        if base_values.ndim >= 2:
-            base_value = base_values[0, 1]
-        elif base_values.ndim == 1 and base_values.size > 1:
-            base_value = base_values[1]
         else:
-            base_value = base_values.reshape(-1)[0]
+            values = shap_values.reshape(-1)
 
-        # Build explanation
+        # Convert base value
+        base_array = clean_numeric(raw_base_value)
+
+        if np.ndim(base_array) > 0:
+            base_array = np.asarray(base_array).reshape(-1)
+
+            if base_array.size > 1:
+                base_value = float(base_array[1])
+            else:
+                base_value = float(base_array[0])
+        else:
+            base_value = float(base_array)
+
+        # Validate dimensions
+        if len(values) != transformed_data.shape[1]:
+            raise ValueError(
+                "SHAP feature count does not match "
+                "the transformed input feature count."
+            )
+
+        # Create explanation
         explanation = shap.Explanation(
-            values=values,
-            base_values=float(base_value),
+            values=np.asarray(values, dtype=float),
+            base_values=base_value,
             data=transformed_data[0],
             feature_names=feature_names
         )
 
+        # Display SHAP chart
         st.subheader("AI Prediction Explanation")
 
         st.markdown(
-            "The chart shows how each processed input feature "
-            "contributes to the model output."
+            "This chart explains how the processed input "
+            "features contribute to the model output."
         )
 
         plt.figure()
@@ -667,7 +699,10 @@ def show_shap_explanation(model_pipeline, input_data):
 
         fig = plt.gcf()
 
-        st.pyplot(fig, width="stretch")
+        st.pyplot(
+            fig,
+            width="stretch"
+        )
 
         plt.close(fig)
 
@@ -685,7 +720,8 @@ def show_shap_explanation(model_pipeline, input_data):
 
         st.code(
             f"{type(exc).__name__}: {exc}"
-        )    
+        )
+  
 # ============================================================
 # AI4I FAILURE PREDICTOR
 # ============================================================
