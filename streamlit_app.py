@@ -608,22 +608,16 @@ def show_shap_explanation(model_pipeline, input_data):
 
         transformed_data = np.asarray(transformed_data)
 
-        # Obtain feature names after preprocessing
+                # Obtain feature names after preprocessing
         try:
             feature_names = list(
                 preprocessing.get_feature_names_out()
             )
-            except Exception as exc:
-        import traceback
-
-        st.warning(
-            "The prediction succeeded, but its SHAP explanation "
-            "could not be generated."
-        )
-
-        st.error(f"{type(exc).__name__}: {exc}")
-
-        st.code(traceback.format_exc())
+        except Exception:
+            feature_names = [
+                f"Feature {i + 1}"
+                for i in range(transformed_data.shape[1])
+            ]
 
         if len(feature_names) != transformed_data.shape[1]:
             feature_names = [
