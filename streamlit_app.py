@@ -578,8 +578,10 @@ def show_live_monitor():
     )
 
 
+
 # ============================================================
 # AI4I FAILURE PREDICTOR - SHAP EXPLANATION
+# Uses native XGBoost feature contributions
 # ============================================================
 
 def show_shap_explanation(model_pipeline, input_data):
@@ -590,10 +592,11 @@ def show_shap_explanation(model_pipeline, input_data):
         import shap
         import numpy as np
         import matplotlib.pyplot as plt
+        import xgboost as xgb
         from scipy import sparse
 
         # ----------------------------------------------------
-        # 1. Validate model pipeline
+        # 1. Validate pipeline
         # ----------------------------------------------------
 
         if (
@@ -601,15 +604,21 @@ def show_shap_explanation(model_pipeline, input_data):
             or len(model_pipeline.steps) < 2
         ):
             raise ValueError(
-                "The supplied model is not a valid "
-                "preprocessing and prediction pipeline."
+                "Expected a pipeline with preprocessing "
+                "and a final XGBoost estimator."
             )
 
         preprocessing = model_pipeline[:-1]
         estimator = model_pipeline.steps[-1][1]
 
+        if not hasattr(estimator, "get_booster"):
+            raise TypeError(
+                "The final pipeline estimator does not expose "
+                "an XGBoost booster."
+            )
+
         # ----------------------------------------------------
-        # 2. Transform input data
+        # 2. Transform input using original preprocessing
         # ----------------------------------------------------
 
         transformed_data = preprocessing.transform(input_data)
@@ -619,18 +628,17 @@ def show_shap_explanation(model_pipeline, input_data):
 
         transformed_data = np.asarray(
             transformed_data,
-            dtype=np.float64
+            dtype=np.float32
         )
 
         # ----------------------------------------------------
-        # 3. Obtain transformed feature names
+        # 3. Obtain feature names
         # ----------------------------------------------------
 
         try:
             feature_names = list(
                 preprocessing.get_feature_names_out()
             )
-
         except Exception:
             feature_names = [
                 f"Feature {i + 1}"
@@ -644,108 +652,96 @@ def show_shap_explanation(model_pipeline, input_data):
             ]
 
         # ----------------------------------------------------
-        # 4. Create SHAP explainer
+        # 4. Get native XGBoost booster
         # ----------------------------------------------------
 
-        explainer = shap.TreeExplainer(estimator)
+        booster = estimator.get_booster()
 
-        raw_shap_values = explainer.shap_values(
-            transformed_data
-        )
+        booster_names = booster.feature_names
 
-        raw_base_value = explainer.expected_value
+        if booster_names is not None:
 
-        # ----------------------------------------------------
-        # 5. Convert SHAP values safely
-        # ----------------------------------------------------
-
-        def clean_numeric(value):
-
-            if isinstance(value, str):
-
-                value = value.strip()
-
-                if value.startswith("[") and value.endswith("]"):
-                    value = value[1:-1].strip()
-
-                return float(value)
-
-            if isinstance(value, (list, tuple, np.ndarray)):
-
-                return np.asarray(
-                    value,
-                    dtype=np.float64
+            if len(booster_names) != transformed_data.shape[1]:
+                raise ValueError(
+                    "The XGBoost feature count does not match "
+                    "the preprocessed input feature count."
                 )
 
-            return float(value)
-
-        shap_values = clean_numeric(raw_shap_values)
-
-        # Select positive class for binary classification
-        if shap_values.ndim == 3:
-            values = shap_values[0, :, 1]
-
-        elif shap_values.ndim == 2:
-            values = shap_values[0]
+            dmatrix = xgb.DMatrix(
+                transformed_data,
+                feature_names=booster_names
+            )
 
         else:
-            values = shap_values.reshape(-1)
+
+            dmatrix = xgb.DMatrix(transformed_data)
 
         # ----------------------------------------------------
-        # 6. Convert expected value
+        # 5. Calculate native SHAP contributions
         # ----------------------------------------------------
 
-        base_array = clean_numeric(raw_base_value)
+        contributions = booster.predict(
+            dmatrix,
+            pred_contribs=True
+        )
 
-        if np.ndim(base_array) > 0:
+        contributions = np.asarray(
+            contributions,
+            dtype=np.float64
+        )
 
-            base_array = np.asarray(
-                base_array,
-                dtype=np.float64
-            ).reshape(-1)
+        # Handle binary or multiclass output
+        if contributions.ndim == 3:
 
-            if base_array.size > 1:
-                base_value = float(base_array[1])
-            else:
-                base_value = float(base_array[0])
+            contributions = contributions[0, 1, :]
+
+        elif contributions.ndim == 2:
+
+            contributions = contributions[0, :]
 
         else:
-            base_value = float(base_array)
-
-        # ----------------------------------------------------
-        # 7. Validate SHAP dimensions
-        # ----------------------------------------------------
-
-        if len(values) != transformed_data.shape[1]:
 
             raise ValueError(
-                "SHAP feature count does not match "
-                "the transformed input feature count."
+                "Unexpected XGBoost contribution dimensions: "
+                f"{contributions.shape}"
+            )
+
+        # Last value is the expected/base value
+        shap_values = contributions[:-1]
+        base_value = float(contributions[-1])
+
+        # ----------------------------------------------------
+        # 6. Validate feature dimensions
+        # ----------------------------------------------------
+
+        if len(shap_values) != transformed_data.shape[1]:
+
+            raise ValueError(
+                "SHAP contribution count does not match "
+                "the transformed feature count."
             )
 
         # ----------------------------------------------------
-        # 8. Construct SHAP explanation
+        # 7. Construct SHAP explanation
         # ----------------------------------------------------
 
         explanation = shap.Explanation(
-            values=np.asarray(values, dtype=np.float64),
+            values=shap_values,
             base_values=base_value,
             data=transformed_data[0],
             feature_names=feature_names
         )
 
         # ----------------------------------------------------
-        # 9. Display waterfall chart
+        # 8. Display waterfall chart
         # ----------------------------------------------------
 
         st.subheader("AI Prediction Explanation")
 
         st.markdown(
-            "This chart shows how the processed input "
-            "features contribute to the model output."
+            "This chart shows how each processed input feature "
+            "contributes to the XGBoost model output."
         )
-
-        plt.figure()
 
         shap.plots.waterfall(
             explanation,
@@ -763,15 +759,13 @@ def show_shap_explanation(model_pipeline, input_data):
         plt.close(fig)
 
         st.caption(
-            "SHAP contributions explain the model output. "
+            "Contributions are calculated using XGBoost's "
+            "native pred_contribs method. Values explain the "
+            "raw model output, not necessarily failure probability. "
             "They do not establish causation."
         )
 
-    # --------------------------------------------------------
-    # 10. Handle SHAP errors
-    # --------------------------------------------------------
-
-    except Exception as exc:
+    except Exception:
 
         st.warning(
             "The prediction was generated, but the SHAP "
@@ -781,6 +775,7 @@ def show_shap_explanation(model_pipeline, input_data):
         st.code(
             traceback.format_exc()
         )
+
 
 # ============================================================
 # AI4I FAILURE PREDICTOR
