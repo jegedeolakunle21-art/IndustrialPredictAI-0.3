@@ -1,11 +1,11 @@
 streamlit
 pandas
-numpy
+numpy==2.4.6
 plotly
 streamlit-autorefresh
 scikit-learn==1.6.1
 joblib==1.6.0
-xgboost
+xgboost==3.2.0
 shap==0.48.0
 matplotlib>=3.8,<4
-scipy
+scipy==1.17.1
