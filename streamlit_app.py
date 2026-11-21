@@ -609,11 +609,19 @@ def show_shap_explanation(model_pipeline, input_data):
             feature_names = list(
                 preprocessing.get_feature_names_out()
             )
-        except Exception:
-            feature_names = [
-                f"Feature {i + 1}"
-                for i in range(transformed_data.shape[1])
-            ]
+        
+    except Exception as exc:
+
+        import traceback
+
+        st.warning(
+            "SHAP explanation failed. Diagnostic details:"
+        )
+
+        st.code(
+            traceback.format_exc()
+        )
+
 
         # Explain the XGBoost estimator
         explainer = shap.TreeExplainer(estimator)
